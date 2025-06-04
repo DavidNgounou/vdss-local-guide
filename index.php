@@ -2,7 +2,7 @@
 // Paramètres de connexion à la base de données
 $host = 'vehicle-decison-support.postgres.database.azure.com';
 $db = 'postgres';
-$user = 'superUser@vehicle-decison-support';
+$user = 'superUser';
 $pass = 'Vdss2468.';
 $port = '5432';
 
