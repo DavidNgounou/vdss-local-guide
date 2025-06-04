@@ -7,7 +7,7 @@ $pass = 'Vdss2468.';
 $port = '5432';
 
 try {
-    $dsn = "pgsql:host=$host;port=$port;dbname=$db;";
+    $dsn = "pgsql:host=$host;port=$port;dbname=$db;sslmode=require";
     $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 
     if (isset($_GET['lat'], $_GET['lng'], $_GET['speed'])) {
@@ -29,3 +29,4 @@ try {
     echo "Erreur : " . $e->getMessage();
 }
 ?>
+
