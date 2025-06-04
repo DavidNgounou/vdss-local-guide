@@ -1,5 +1,5 @@
 <?php
-// Paramètres de connexion à la base de données
+// Connexion à la base de données PostgreSQL + PostGIS
 $host = 'vehicle-decison-support.postgres.database.azure.com';
 $db = 'postgres';
 $user = 'superUser';
@@ -10,27 +10,21 @@ try {
     $dsn = "pgsql:host=$host;port=$port;dbname=$db;";
     $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 
-    // Récupération des données JSON envoyées par le module GPS
+    // Récupération des données JSON envoyées
     $data = json_decode(file_get_contents("php://input"), true);
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        // Vérification des paramètres requis
         if (isset($data['lat'], $data['lng'], $data['speed'], $data['plate'])) {
             $lat = $data['lat'];
             $lng = $data['lng'];
             $speed = $data['speed'];
             $plate = $data['plate'];
 
-            // Création du point géographique
             $pointWKT = sprintf("POINT(%s %s)", $lng, $lat);
 
-            // Insertion des données GPS dans la table gps_data
-            $stmt = $pdo->prepare("INSERT INTO gps_data (car_plate_number, position, speed_kmh) VALUES (?, ST_GeomFromText(?, 4326), ?)");
-            $stmt->execute([$plate, $pointWKT, $speed]);
-
-            // Récupération du segment de route correspondant
+            // Trouver le segment de route le plus proche
             $stmt = $pdo->prepare("
-                SELECT id, speed_limit
+                SELECT id, speed_limit_id, road_coordinates
                 FROM road_segment
                 WHERE ST_DWithin(road_coordinates, ST_GeomFromText(?, 4326), 0.0005)
                 ORDER BY ST_Distance(road_coordinates, ST_GeomFromText(?, 4326))
@@ -39,62 +33,55 @@ try {
             $stmt->execute([$pointWKT, $pointWKT]);
             $segment = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if ($segment) {
-                echo json_encode([
-                    'status' => 'success',
-                    'speed_limit' => $segment['speed_limit'],
-                    'segment_id' => $segment['id']
-                ]);
+            if ($segment && $segment['speed_limit_id'] !== null) {
+                $segment_id = $segment['id'];
+                $speed_limit = $segment['speed_limit_id'];
+
+                if ($speed > $speed_limit) {
+                    // Insertion dans exceed_speed_limit
+                    $stmt = $pdo->prepare("
+                        INSERT INTO exceed_speed_limit (
+                            time_of_violation,
+                            running_speed,
+                            number_of_times_warned,
+                            positions_of_sp_violation,
+                            road_segment_id,
+                            car_plate_number
+                        )
+                        VALUES (CURRENT_TIMESTAMP, ?, 1, ST_GeomFromText(?, 4326), ?, ?)
+                    ");
+                    $stmt->execute([
+                        $speed,
+                        $pointWKT,
+                        $segment_id,
+                        $plate
+                    ]);
+
+                    echo json_encode([
+                        'status' => 'violation_recorded',
+                        'speed_limit' => $speed_limit,
+                        'your_speed' => $speed
+                    ]);
+                    exit;
+                } else {
+                    echo json_encode([
+                        'status' => 'ok',
+                        'speed_limit' => $speed_limit,
+                        'your_speed' => $speed
+                    ]);
+                    exit;
+                }
             } else {
                 echo json_encode([
-                    'status' => 'success',
-                    'speed_limit' => null,
-                    'segment_id' => null
+                    'status' => 'no_segment_found'
                 ]);
+                exit;
             }
         } else {
-            http_response_code(400);
-            echo json_encode(['error' => 'Paramètres manquants']);
+            echo json_encode(['status' => 'error', 'message' => 'Missing parameters']);
         }
-    } elseif ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        // Récupération des données GET
-        if (isset($_GET['lat'], $_GET['lng'])) {
-            $lat = $_GET['lat'];
-            $lng = $_GET['lng'];
-            $pointWKT = sprintf("POINT(%s %s)", $lng, $lat);
-
-            // Récupération du segment de route correspondant
-            $stmt = $pdo->prepare("
-                SELECT id, speed_limit
-                FROM road_segment
-                WHERE ST_DWithin(road_coordinates, ST_GeomFromText(?, 4326), 0.0005)
-                ORDER BY ST_Distance(road_coordinates, ST_GeomFromText(?, 4326))
-                LIMIT 1
-            ");
-            $stmt->execute([$pointWKT, $pointWKT]);
-            $segment = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($segment) {
-                echo json_encode([
-                    'speed_limit' => $segment['speed_limit'],
-                    'segment_id' => $segment['id']
-                ]);
-            } else {
-                echo json_encode([
-                    'speed_limit' => null,
-                    'segment_id' => null
-                ]);
-            }
-        } else {
-            http_response_code(400);
-            echo json_encode(['error' => 'Paramètres lat et lng requis']);
-        }
-    } else {
-        http_response_code(405);
-        echo json_encode(['error' => 'Méthode non autorisée']);
     }
 } catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode(['error' => $e->getMessage()]);
+    echo json_encode(['status' => 'db_error', 'message' => $e->getMessage()]);
 }
 ?>
