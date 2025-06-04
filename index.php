@@ -2,12 +2,12 @@
 // Paramètres de connexion Azure PostgreSQL
 $host = 'vehicle-decison-support.postgres.database.azure.com';
 $db = 'postgres';
-$user = 'superUser@vehicle-decison-support'; // Pour Azure
+$user = 'superUser'; // Pour Azure
 $pass = 'Vdss2468.';
 $port = '5432';
 
 try {
-    $dsn = "pgsql:host=$host;port=$port;dbname=$db;sslmode=require";
+    $dsn = "pgsql:host=$host;port=$port;dbname=$db;sslmode=require" ;
     $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 
     if (isset($_GET['lat'], $_GET['lng'], $_GET['speed'])) {
@@ -29,4 +29,3 @@ try {
     echo "Erreur : " . $e->getMessage();
 }
 ?>
-
