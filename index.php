@@ -1,5 +1,4 @@
 <?php
-// Connexion à la base de données PostgreSQL + PostGIS
 $host = 'vehicle-decison-support.postgres.database.azure.com';
 $db = 'postgres';
 $user = 'superUser';
@@ -24,7 +23,7 @@ try {
 
             // Trouver le segment de route le plus proche dans un rayon (~50m)
             $stmt = $pdo->prepare("
-                SELECT id, speed_limit_id, road_coordinates
+                SELECT id, speed_limit, road_coordinates
                 FROM road_segment
                 WHERE ST_DWithin(road_coordinates, ST_GeomFromText(?, 4326), 0.0005)
                 ORDER BY ST_Distance(road_coordinates, ST_GeomFromText(?, 4326))
@@ -33,12 +32,12 @@ try {
             $stmt->execute([$pointWKT, $pointWKT]);
             $segment = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if ($segment && $segment['speed_limit_id'] !== null) {
+            if ($segment && $segment['speed_limit'] !== null) {
                 $segment_id = $segment['id'];
-                $speed_limit = intval($segment['speed_limit_id']); // Assure-toi que speed_limit_id = vitesse
+                $speed_limit = intval($segment['speed_limit']);
 
                 if ($speed > $speed_limit) {
-                    // Enregistrer violation
+                    // Enregistrer la violation
                     $stmt = $pdo->prepare("
                         INSERT INTO exceed_speed_limit (
                             time_of_violation,
@@ -48,12 +47,15 @@ try {
                             road_segment_id,
                             car_plate_number
                         )
-                        VALUES (CURRENT_TIMESTAMP, ?, ?, ST_GeomFromText(?, 4326), ?, ?)
+                        VALUES (
+                            CURRENT_TIMESTAMP,
+                            ?, ?, ST_GeomFromText(?, 4326), ?, ?
+                        )
                     ");
                     $stmt->execute([
                         $speed,
                         $warn_count,
-                        $pointWKT,
+                        $pointWKT, // Représente un POINT même si la colonne attend un LineString (voir remarque plus bas)
                         $segment_id,
                         $plate
                     ]);
