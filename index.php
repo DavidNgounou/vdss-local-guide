@@ -21,7 +21,7 @@ try {
 
             $pointWKT = sprintf("POINT(%s %s)", $lng, $lat);
 
-            // Trouver le segment de route le plus proche dans un rayon (~50m)
+            // Trouver le segment de route le plus proche
             $stmt = $pdo->prepare("
                 SELECT id, speed_limit, road_coordinates
                 FROM road_segment
@@ -31,6 +31,8 @@ try {
             ");
             $stmt->execute([$pointWKT, $pointWKT]);
             $segment = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            $violationRecorded = false; // Variable pour indiquer si une violation a été enregistrée
 
             if ($segment && $segment['speed_limit'] !== null) {
                 $segment_id = $segment['id'];
@@ -55,42 +57,41 @@ try {
                     $stmt->execute([
                         $speed,
                         $warn_count,
-                        $pointWKT, // Représente un POINT même si la colonne attend un LineString (voir remarque plus bas)
+                        $pointWKT,
                         $segment_id,
                         $plate
                     ]);
 
-                    echo json_encode([
-                        'status' => 'violation_recorded',
-                        'speed_limit' => $speed_limit,
-                        'your_speed' => $speed,
-                        'segment_id' => $segment_id
-                    ]);
-                    exit;
-                } else {
-                    echo json_encode([
-                        'status' => 'ok',
-                        'speed_limit' => $speed_limit,
-                        'your_speed' => $speed
-                    ]);
-                    exit;
+                    $violationRecorded = true; // Indiquer qu'une violation a été enregistrée
                 }
+            }
+            
+            // Vérification de la variable pour activer le buzzer
+            if ($violationRecorded) {
+                // Code pour activer le buzzer, par exemple :
+                // $esp_url = 'http://adresse_ip_esp/activate_buzzer';
+                // file_get_contents($esp_url);
+                
+                echo json_encode([
+                    'status' => 'violation_recorded',
+                    'speed_limit' => $speed_limit,
+                    'your_speed' => $speed,
+                    'segment_id' => $segment_id
+                ]);
             } else {
                 echo json_encode([
-                    'status' => 'no_segment_found'
+                    'status' => 'ok',
+                    'speed_limit' => $speed_limit,
+                    'your_speed' => $speed
                 ]);
-                exit;
             }
         } else {
             echo json_encode(['status' => 'error', 'message' => 'Missing parameters']);
-            exit;
         }
     } else {
         echo json_encode(['status' => 'error', 'message' => 'Invalid HTTP method']);
-        exit;
     }
 } catch (PDOException $e) {
     echo json_encode(['status' => 'db_error', 'message' => $e->getMessage()]);
-    exit;
 }
 ?>
